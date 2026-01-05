@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 import datetime
-
+import os
 
 
 # 1. Widget l'actif 
@@ -15,9 +15,10 @@ selected_ticker = tickers[selected_asset_name]
 
 # 2. Récupération des données (Data Retrieval) 
 # On utilise une fonction avec @st.cache_data pour éviter de re-télécharger à chaque clic
-@st.cache_data
+# ttl=300 veut dire : "Expire le cache après 300 secondes (5 min)"
+@st.cache_data(ttl=300) 
 def load_data(ticker):
-    # On change "2y" en "10y" pour avoir plus d'historique
+    # On télécharge 10 ans d'historique pour avoir assez de recul
     data = yf.download(ticker, period="10y", interval="1d")
     return data
 
@@ -46,19 +47,44 @@ if not df.empty:
     st.dataframe(df.tail())
 else:
     st.error("Erreur lors de la récupération des données.")
+
+# --- SECTION RAPPORT AUTOMATIQUE (SIDEBAR) ---
+st.sidebar.write("---")
+st.sidebar.header("📋Rapport Quotidien")
+
+report_path = "rapport_quotidien.txt"
+
+# On vérifie si le fichier existe (créé par le script report.py)
+if os.path.exists(report_path):
+    # On lit le fichier
+    with open(report_path, "r", encoding="utf-8") as f:
+        report_content = f.read()
+
+    # 1. Bouton de téléchargement
+    st.sidebar.download_button(
+        label=" Télécharger le Rapport",
+        data=report_content,
+        file_name="historique_rapports.txt",
+        mime="text/plain"
+    )
+
+    # 2. Affichage (Expander pour ne pas prendre trop de place)
+    with st.sidebar.expander("Voir le dernier rapport"):
+        st.text(report_content)
+else:
+    st.sidebar.info("Aucun rapport généré pour l'instant. (Attendre 20h00 ou lancer le script manuellement)")
     
 # --- 3. ANALYSE ET STRATÉGIES ---
 st.write("---")
 st.header("Analyse de Stratégies")
 
-# Paramètres interactifs
-col1, col2, col3 = st.columns(3)
-with col1:
-    short_window = st.slider("Moyenne Mobile Courte", 5, 50, 20)
-with col2:
-    long_window = st.slider("Moyenne Mobile Longue", 50, 200, 50)
-with col3:
-    rsi_window = st.slider("Période RSI", 5, 30, 14)
+# --- PARAMÈTRES DANS LA BARRE LATÉRALE (SIDEBAR) ---
+st.sidebar.header("Paramètres des Stratégies")
+
+# On empile les sliders dans la barre latérale pour gagner de la place
+short_window = st.sidebar.slider("Moyenne Mobile Courte", 5, 50, 20)
+long_window = st.sidebar.slider("Moyenne Mobile Longue", 50, 200, 50)
+rsi_window = st.sidebar.slider("Période RSI", 5, 30, 14)
 
 # Calcul des indicateurs (Moteur de calcul)
 df = df.sort_index()
@@ -96,25 +122,25 @@ df_clean['Signal_RSI'] = df_clean['Signal_RSI'].replace(to_replace=0, method='ff
 df_clean['Ret_RSI'] = df_clean['Signal_RSI'].shift(1) * df_clean['Returns']
 df_clean['RSI_Strategy'] = initial_capital * (1 + df_clean['Ret_RSI']).cumprod()
 
-# --- SÉLECTEUR DE STRATÉGIES (NOUVEAU) ---
+# --- SÉLECTEUR DE STRATÉGIES (DANS LA SIDEBAR) ---
 st.subheader("Comparaison Dynamique")
 
-# Dictionnaire de configuration : Nom Affiché -> {Colonne Valeur, Colonne Rendement}
+# Dictionnaire de configuration
 strategies_config = {
-    "Buy & Hold": {"val_col": "BuyHold_Strategy", "ret_col": "Returns"},
-    "Moyenne Mobile": {"val_col": "MA_Strategy", "ret_col": "Ret_MA"},
-    "RSI (Oscillateur)": {"val_col": "RSI_Strategy", "ret_col": "Ret_RSI"}
+    "Prix de l'Actif (Buy & Hold)": {"val_col": "BuyHold_Strategy", "ret_col": "Returns"},
+    "Stratégie Moyenne Mobile": {"val_col": "MA_Strategy", "ret_col": "Ret_MA"},
+    "Stratégie RSI": {"val_col": "RSI_Strategy", "ret_col": "Ret_RSI"}
 }
 
-# Le Widget Multiselect
-selected_strats = st.multiselect(
-    "Choisissez les stratégies à afficher :",
+# Le Widget Multiselect DANS LA SIDEBAR
+selected_strats = st.sidebar.multiselect(
+    "Stratégies à afficher :",
     options=list(strategies_config.keys()),
     default=list(strategies_config.keys()) # Tout sélectionné par défaut
 )
 
 if not selected_strats:
-    st.warning("Veuillez sélectionner au moins une stratégie.")
+    st.warning("Veuillez sélectionner au moins une stratégie dans la barre latérale.")
 else:
     # 1. Filtrage pour le Graphique
     cols_to_plot = [strategies_config[name]["val_col"] for name in selected_strats]
@@ -148,14 +174,10 @@ else:
     st.table(pd.DataFrame(metrics_list))
 
 
-from sklearn.linear_model import LinearRegression
-import datetime
+# --- BONUS : PRÉDICTION MACHINE LEARNING ---
 
-import numpy as np 
-
-# --- BONUS : PRÉDICTION MACHINE LEARNING AVEC INTERVALLE ---
 st.write("---")
-st.header("🔮 Bonus : Prédiction & Intervalle de Confiance")
+st.header(" Prédiction & Intervalle de Confiance")
 
 # Préparation des données
 df_ml = df.reset_index()
@@ -171,7 +193,6 @@ model = LinearRegression()
 model.fit(X, y)
 
 # --- CALCUL DE LA MARGE D'ERREUR (CONFIANCE) ---
-# On regarde si le modèle se trompait beaucoup sur les données passées
 preds_train = model.predict(X)
 residuals = y - preds_train
 std_error = residuals.std() # Écart-type des erreurs
@@ -199,13 +220,9 @@ df_future.set_index('Date', inplace=True)
 st.subheader("Projection à 30 jours avec tunnel de confiance")
 
 # --- GRAPHIQUE AMÉLIORÉ ---
-# On affiche l'historique récent + les 3 courbes futures
 df_history = df.tail(180)[['Close']].rename(columns={'Close': 'Historique'})
-# On combine tout
 df_final_chart = pd.concat([df_history, df_future], axis=1)
 
-# Astuce visuelle : st.line_chart assigne des couleurs auto. 
-# On affiche les 4 colonnes : Historique, Bas, Prédiction, Haut
 st.line_chart(df_final_chart)
 
 # Affichage des métriques
@@ -219,3 +236,16 @@ col2.metric("Objectif (30j)", f"{pred_val:.2f} €", f"{var:.2%}")
 col3.metric("Intervalle de confiance", f"{lower_bound[-1]:.0f} - {upper_bound[-1]:.0f} €")
 
 st.caption("Le 'tunnel' (Scénario Haut/Bas) représente la zone où le prix a 95% de chances de se trouver si la tendance et la volatilité actuelles continuent.")
+
+st.sidebar.write("---")
+st.sidebar.header("Exportation")
+
+# On convertit le DataFrame en CSV
+csv = df_clean.to_csv().encode('utf-8')
+
+st.sidebar.download_button(
+    label="📥 Télécharger les données (CSV)",
+    data=csv,
+    file_name=f'rapport_{selected_ticker}.csv',
+    mime='text/csv',
+)
