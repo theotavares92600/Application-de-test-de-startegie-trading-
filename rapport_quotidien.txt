@@ -1,0 +1,30 @@
+==========================================
+RAPPORT AUTOMATIQUE - 2026-01-06 13:22:23
+==========================================
+
+Actif: AAPL
+  - Prix Fermeture : 267.26
+  - Prix Ouverture : 270.64
+  - Volatilité (30j): 10.25%
+  - Max Drawdown   : -4.13%
+------------------------------
+Actif: BTC-USD
+  - Prix Fermeture : 93888.55
+  - Prix Ouverture : 93861.73
+  - Volatilité (30j): 21.94%
+  - Max Drawdown   : -7.80%
+------------------------------
+Actif: GC=F
+  - Prix Fermeture : 4472.30
+  - Prix Ouverture : 4459.80
+  - Volatilité (30j): 23.81%
+  - Max Drawdown   : -4.74%
+------------------------------
+Actif: EURUSD=X
+  - Prix Fermeture : 1.17
+  - Prix Ouverture : 1.17
+  - Volatilité (30j): 3.91%
+  - Max Drawdown   : -0.77%
+------------------------------
+
+Fin du rapport.
